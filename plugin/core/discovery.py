@@ -125,7 +125,7 @@ def discover_with_youtube_api(query: str, max_results: int = 5) -> list[SourceCa
 def discover_with_musicbrainz(query: str, max_results: int = 3) -> list[SourceCandidate]:
     mb_url = "https://musicbrainz.org/ws/2/recording"
     params = {"query": query, "fmt": "json", "limit": max_results}
-    headers = {"User-Agent": "openclaw-music-listener/0.1"}
+    headers = {"User-Agent": "openclaw-listen/0.1"}
 
     try:
         resp = requests.get(mb_url, params=params, headers=headers, timeout=20)
