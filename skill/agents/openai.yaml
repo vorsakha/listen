@@ -1,0 +1,4 @@
+interface:
+  display_name: "Music Listener"
+  short_description: "Listen to songs via audio feature analysis"
+  default_prompt: "Use $music-listener to discover, analyze, and describe how a song feels from its audio."

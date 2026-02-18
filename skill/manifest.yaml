@@ -1,0 +1,12 @@
+name: music-listener
+version: 0.1.0
+description: OpenClaw music listening skill for autonomous discovery, retrieval, feature extraction, and synthesis.
+entrypoints:
+  listen: python3 plugin/tools/music_listen.py "{query}"
+  discover: python3 plugin/tools/music_discover.py "{query}"
+  fetch: python3 plugin/tools/music_fetch.py "{query}"
+  analyze: python3 plugin/tools/music_analyze.py "{audio_path}"
+  cache_status: python3 plugin/tools/music_cache_status.py "{key}"
+cache:
+  root_dir: ./cache
+  sqlite_path: ./cache/index.sqlite
