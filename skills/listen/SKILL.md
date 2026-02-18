@@ -1,7 +1,6 @@
 ---
-name: music-listener
+name: listen
 description: Autonomously listen to music by discovering tracks, retrieving audio, extracting musical features, analyzing lyrics when available, and generating natural listening observations. Use when a user asks to listen to a song, compare songs by sound, or analyze an instrumental/non-lyrical track from text input.
-tools: command-dispatch
 user-invocable: true
 disable-model-invocation: false
 ---
@@ -14,19 +13,19 @@ Use this skill when the user asks to listen to music from a text query, for exam
 
 1. Discover candidates:
 ```bash
-python3 plugin/tools/music_discover.py "<query>"
+python3 tools/music_discover.py "<query>"
 ```
 
 2. Run end-to-end listen:
 ```bash
-python3 plugin/tools/music_listen.py "<query>"
+python3 tools/music_listen.py "<query>"
 ```
 
 3. If the user requests low-level artifacts, run layer tools:
 ```bash
-python3 plugin/tools/music_fetch.py "<query>"
-python3 plugin/tools/music_analyze.py "<local_audio_path>"
-python3 plugin/tools/music_cache_status.py "<query_or_key>"
+python3 tools/music_fetch.py "<query>"
+python3 tools/music_analyze.py "<local_audio_path>"
+python3 tools/music_cache_status.py "<query_or_key>"
 ```
 
 ## Behavioral Requirements

@@ -13,8 +13,9 @@ Given a prompt like `Listen to Mac Miller's Good News`, it can:
 
 ## Project layout
 
-- `plugin/`: core pipeline + tool entrypoints
-- `skill/`: OpenClaw skill files (`SKILL.md`, `SOUL.md`, manifest, references)
+- `plugin/core/`: core pipeline logic
+- `tools/`: CLI entrypoints for discovery/retrieval/analysis/listen/cache inspection
+- `skills/`: OpenClaw-discoverable skill files (`skills/<name>/SKILL.md`)
 - `config/settings.example.yaml`: runtime configuration
 - `cache/`: audio/features/sqlite cache artifacts
 - `tests/`: pytest suite
@@ -34,11 +35,11 @@ python3 -m venv .venv
 ## Run tools
 
 ```bash
-python3 plugin/tools/music_listen.py "Mac Miller Good News"
-python3 plugin/tools/music_discover.py "Mac Miller Good News"
-python3 plugin/tools/music_fetch.py "Mac Miller Good News"
-python3 plugin/tools/music_analyze.py /path/to/audio.wav
-python3 plugin/tools/music_cache_status.py "Mac Miller Good News"
+python3 tools/music_listen.py "Mac Miller Good News"
+python3 tools/music_discover.py "Mac Miller Good News"
+python3 tools/music_fetch.py "Mac Miller Good News"
+python3 tools/music_analyze.py /path/to/audio.wav
+python3 tools/music_cache_status.py "Mac Miller Good News"
 ```
 
 ## Configuration
@@ -55,7 +56,7 @@ Useful env vars:
 .venv/bin/pytest -q
 ```
 
-Current status: `17 passed`.
+Current status: `26 passed`.
 
 ## Notes
 

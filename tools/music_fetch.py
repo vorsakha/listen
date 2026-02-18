@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -17,7 +17,7 @@ def main() -> None:
 
     from plugin.core.discovery import discover_song
     from plugin.core.retrieval import fetch_audio
-    from plugin.tools._common import get_cache, print_json
+    from tools._common import get_cache, print_json
 
     cache = get_cache()
     discovery = discover_song(args.query)
