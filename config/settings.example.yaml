@@ -23,6 +23,17 @@ analysis:
   enable_essentia: false
   enable_demucs: false
 
+lyrics:
+  enabled: true
+  provider_order:
+    - lrclib
+  request_timeout_sec: 10
+  max_chars: 12000
+  min_text_chars: 120
+  include_in_cache: true
+  allow_asr_fallback: false
+  asr_model_size: small
+
 cache:
   root_dir: ./cache
   sqlite_path: ./cache/index.sqlite

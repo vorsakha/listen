@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from plugin.core.models import FeatureResult, SourceCandidate
+from plugin.core.models import FeatureResult, LyricsAnalysisResult, SourceCandidate
 from plugin.core.synthesis import build_synthesis
 
 
@@ -12,6 +12,7 @@ def test_build_synthesis_contains_prompt_and_highlights() -> None:
     assert "Immediate feel" in out.prompt_for_text_model
     assert out.highlights
     assert "88.0" in " ".join(out.highlights)
+    assert out.combined_observation
 
 
 def test_build_synthesis_adds_uncertainty_for_metadata_provider() -> None:
@@ -20,3 +21,20 @@ def test_build_synthesis_adds_uncertainty_for_metadata_provider() -> None:
 
     out = build_synthesis(source, features)
     assert any("metadata" in msg.lower() for msg in out.uncertainty_notes)
+
+
+def test_build_synthesis_with_lyrics_analysis_adds_lyric_observation() -> None:
+    source = SourceCandidate(provider="ytdlp", source_id="x", title="Song")
+    features = FeatureResult(tempo_bpm=95.0, key="A", mode="minor")
+    lyrics = LyricsAnalysisResult(
+        themes=["loss", "hope"],
+        emotional_polarity="mixed",
+        intensity=0.7,
+        confidence=0.8,
+        evidence_lines=["line one"],
+        summary="summary",
+    )
+
+    out = build_synthesis(source, features, lyrics_analysis=lyrics)
+    assert out.lyric_observation is not None
+    assert "Lyrically" in out.combined_observation

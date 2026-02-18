@@ -6,8 +6,11 @@ from .analysis import analyze_audio
 from .cache import CacheStore
 from .discovery import discover_song
 from .errors import AnalysisError, DiscoveryError, RetrievalError
+from .lyric_analysis import analyze_lyrics
+from .lyrics import fetch_lyrics
 from .models import DiscoveryResult, ListenResult
 from .retrieval import fetch_audio
+from .settings import load_settings
 from .synthesis import build_synthesis
 
 
@@ -23,6 +26,7 @@ def discover(query: str, cache: CacheStore, ttl_sec: int = 604800) -> DiscoveryR
 
 def listen(query: str, cache: CacheStore, deep_analysis: bool = True) -> ListenResult:
     outcome = ListenResult(query=query)
+    settings = load_settings()
 
     try:
         d = discover(query, cache)
@@ -52,8 +56,18 @@ def listen(query: str, cache: CacheStore, deep_analysis: bool = True) -> ListenR
         outcome.errors.append({"code": exc.code, "message": exc.message})
         return outcome
 
+    if outcome.source:
+        lyrics = fetch_lyrics(outcome.source, cache=cache, settings=settings, audio=outcome.audio)
+        outcome.lyrics = lyrics
+        if lyrics.text:
+            outcome.lyrics_analysis = analyze_lyrics(lyrics, cache=cache)
+
     if deep_analysis and outcome.source and outcome.features:
-        outcome.synthesis = build_synthesis(outcome.source, outcome.features)
+        outcome.synthesis = build_synthesis(
+            outcome.source,
+            outcome.features,
+            lyrics_analysis=outcome.lyrics_analysis,
+        )
 
     return outcome
 

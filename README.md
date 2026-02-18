@@ -8,7 +8,8 @@ Given a prompt like `Listen to Mac Miller's Good News`, it can:
 1. Discover the track (yt-dlp first, YouTube API + MusicBrainz fallback)
 2. Retrieve audio
 3. Extract music features (tempo/key/energy/sections)
-4. Generate natural listening observations
+4. Retrieve lyrics when available (LRCLIB, optional ASR fallback)
+5. Generate natural listening observations with audio + lyric feel
 
 ## Project layout
 
@@ -21,7 +22,7 @@ Given a prompt like `Listen to Mac Miller's Good News`, it can:
 ## Requirements
 
 - Python 3.14+
-- `ffmpeg` (already present on this machine at `/usr/bin/ffmpeg`)
+- `ffmpeg` 
 
 ## Setup
 
@@ -60,4 +61,5 @@ Current status: `17 passed`.
 
 - Primary discovery/retrieval is `yt-dlp` (no API key needed).
 - The synthesis layer produces a prompt and natural observation text from extracted features.
+- The synthesis layer now includes lyric-feeling and a combined observation when lyric evidence exists.
 - Caching avoids repeated downloads and analysis for repeated listens.

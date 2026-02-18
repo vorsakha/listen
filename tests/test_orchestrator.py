@@ -4,7 +4,15 @@ import pytest
 
 from plugin.core.cache import CacheStore
 from plugin.core.errors import AnalysisError, DiscoveryError, RetrievalError
-from plugin.core.models import AudioArtifact, DiscoveryResult, FeatureResult, FetchResult, SourceCandidate, SynthesisResult
+from plugin.core.models import (
+    AudioArtifact,
+    DiscoveryResult,
+    FeatureResult,
+    FetchResult,
+    LyricsArtifact,
+    SourceCandidate,
+    SynthesisResult,
+)
 from plugin.core.orchestrator import listen
 
 
@@ -32,9 +40,16 @@ def test_listen_success(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         lambda audio_path, cache: FeatureResult(tempo_bpm=100.0, key="C", mode="major", energy_mean=0.1),
     )
     monkeypatch.setattr(
+        "plugin.core.orchestrator.fetch_lyrics",
+        lambda source, cache, settings, audio: LyricsArtifact(source="none", warnings=["LYRICS_NOT_FOUND"]),
+    )
+    monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
+    monkeypatch.setattr(
         "plugin.core.orchestrator.build_synthesis",
-        lambda source, features: SynthesisResult(
+        lambda source, features, lyrics_analysis=None: SynthesisResult(
             natural_observation="obs",
+            lyric_observation=None,
+            combined_observation="combined",
             highlights=["h"],
             uncertainty_notes=[],
             prompt_for_text_model="p",
@@ -46,6 +61,9 @@ def test_listen_success(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     assert out.source is not None
     assert out.audio is not None
     assert out.features is not None
+    assert out.lyrics is not None
+    assert out.lyrics.source == "none"
+    assert out.lyrics_analysis is None
     assert out.synthesis is not None
 
 

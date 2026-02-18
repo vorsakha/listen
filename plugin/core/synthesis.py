@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import FeatureResult, SourceCandidate, SynthesisResult
+from .models import FeatureResult, LyricsAnalysisResult, SourceCandidate, SynthesisResult
 
 
 PROMPT_TEMPLATE = """You are listening to a song as a careful human critic.
@@ -32,7 +32,11 @@ Respond with:
 """
 
 
-def build_synthesis(source: SourceCandidate, features: FeatureResult) -> SynthesisResult:
+def build_synthesis(
+    source: SourceCandidate,
+    features: FeatureResult,
+    lyrics_analysis: LyricsAnalysisResult | None = None,
+) -> SynthesisResult:
     tempo = features.tempo_bpm or 0.0
     energy = features.energy_mean or 0.0
 
@@ -53,12 +57,27 @@ def build_synthesis(source: SourceCandidate, features: FeatureResult) -> Synthes
         uncertainty.append("Only metadata was available; no direct audio evidence from source provider.")
     if not features.section_map:
         uncertainty.append("Section segmentation confidence is low.")
+    if not lyrics_analysis:
+        uncertainty.append("Lyrics were unavailable or insufficient for textual-feeling analysis.")
 
     natural = (
         f"This listen reads as {mood}, with a pulse near {tempo:.0f} BPM and a tonal center around "
         f"{features.key or 'an uncertain key'} {features.mode}. The energy contour suggests deliberate dynamic shaping "
         "rather than flat loudness, and the spectral balance points to a warm-mid texture with periodic transient lift."
     )
+
+    lyric_observation = None
+    combined_observation = natural
+    if lyrics_analysis:
+        lyric_observation = (
+            f"Lyrically, the text feels {lyrics_analysis.emotional_polarity}, touching themes like "
+            f"{', '.join(lyrics_analysis.themes[:2])}. The wording suggests an intensity around "
+            f"{(lyrics_analysis.intensity or 0.0):.2f}."
+        )
+        combined_observation = (
+            f"{natural} Lyrically, it leans {lyrics_analysis.emotional_polarity}, which "
+            "either reinforces or gently contrasts the sonic mood to create a fuller emotional arc."
+        )
 
     prompt = PROMPT_TEMPLATE.format(
         title=source.title,
@@ -77,6 +96,8 @@ def build_synthesis(source: SourceCandidate, features: FeatureResult) -> Synthes
 
     return SynthesisResult(
         natural_observation=natural,
+        lyric_observation=lyric_observation,
+        combined_observation=combined_observation,
         highlights=highlights,
         uncertainty_notes=uncertainty,
         prompt_for_text_model=prompt,

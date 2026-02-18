@@ -51,8 +51,29 @@ class FeatureResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class LyricsArtifact(BaseModel):
+    source: Literal["lrclib", "asr", "none"] = "none"
+    text: str | None = None
+    language: str | None = None
+    is_synced: bool = False
+    provider_confidence: float | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class LyricsAnalysisResult(BaseModel):
+    themes: list[str] = Field(default_factory=list)
+    emotional_polarity: Literal["negative", "mixed", "positive", "neutral"] = "neutral"
+    intensity: float | None = None
+    confidence: float = 0.0
+    evidence_lines: list[str] = Field(default_factory=list)
+    summary: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
 class SynthesisResult(BaseModel):
     natural_observation: str
+    lyric_observation: str | None = None
+    combined_observation: str
     highlights: list[str] = Field(default_factory=list)
     uncertainty_notes: list[str] = Field(default_factory=list)
     prompt_for_text_model: str
@@ -63,6 +84,8 @@ class ListenResult(BaseModel):
     source: SourceCandidate | None = None
     audio: AudioArtifact | None = None
     features: FeatureResult | None = None
+    lyrics: LyricsArtifact | None = None
+    lyrics_analysis: LyricsAnalysisResult | None = None
     synthesis: SynthesisResult | None = None
     cache: dict[str, Any] = Field(default_factory=dict)
     errors: list[dict[str, str]] = Field(default_factory=list)

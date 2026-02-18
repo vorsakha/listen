@@ -1,6 +1,6 @@
 ---
 name: music-listener
-description: Autonomously listen to music by discovering tracks, retrieving audio, extracting musical features, and generating natural listening observations. Use when a user asks to listen to a song, compare songs by sound, or analyze an instrumental/non-lyrical track from text input.
+description: Autonomously listen to music by discovering tracks, retrieving audio, extracting musical features, analyzing lyrics when available, and generating natural listening observations. Use when a user asks to listen to a song, compare songs by sound, or analyze an instrumental/non-lyrical track from text input.
 tools: command-dispatch
 user-invocable: true
 disable-model-invocation: false
@@ -36,12 +36,14 @@ python3 plugin/tools/music_cache_status.py "<query_or_key>"
 - Use MusicBrainz as metadata fallback.
 - Report uncertainty explicitly.
 - Never invent lyrics.
+- If lyrics are unavailable, continue with audio-only analysis and say so clearly.
 - For instrumental tracks, focus on rhythm, harmony, texture, and dynamics.
 
 ## Response Requirements
 
 - Return a natural listening response first.
 - Include brief structured highlights (tempo/key/energy) only as supporting evidence.
+- When lyrics are present, include a concise lyric-feeling section and a combined interpretation.
 - If retrieval or analysis fails, explain fallback path and next best action.
 
 ## Configuration

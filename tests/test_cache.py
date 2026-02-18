@@ -52,3 +52,21 @@ def test_cache_status_flags(tmp_path: Path) -> None:
     status = cache.cache_status(key)
     assert status["query_cached"] is True
     assert status["audio_cached"] is True
+
+
+def test_lyrics_cache_roundtrip(tmp_path: Path) -> None:
+    cache = CacheStore(root_dir=str(tmp_path / "cache"), sqlite_path=str(tmp_path / "cache" / "index.sqlite"))
+    source_key = cache.normalize_key("lyrics-source")
+    lyrics = '{"source":"lrclib","text":"hello world"}'
+
+    cache.put_lyrics(source_key, lyrics)
+    assert cache.get_lyrics(source_key) == lyrics
+
+
+def test_lyrics_analysis_cache_roundtrip(tmp_path: Path) -> None:
+    cache = CacheStore(root_dir=str(tmp_path / "cache"), sqlite_path=str(tmp_path / "cache" / "index.sqlite"))
+    lyrics_key = cache.normalize_key("lyrics-text")
+    analysis = '{"themes":["loss"],"emotional_polarity":"negative"}'
+
+    cache.put_lyrics_analysis(lyrics_key, analysis)
+    assert cache.get_lyrics_analysis(lyrics_key) == analysis

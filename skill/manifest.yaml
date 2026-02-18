@@ -1,6 +1,6 @@
 name: music-listener
 version: 0.1.0
-description: OpenClaw music listening skill for autonomous discovery, retrieval, feature extraction, and synthesis.
+description: OpenClaw music listening skill for autonomous discovery, retrieval, feature extraction, lyric analysis, and synthesis.
 entrypoints:
   listen: python3 plugin/tools/music_listen.py "{query}"
   discover: python3 plugin/tools/music_discover.py "{query}"

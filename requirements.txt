@@ -8,6 +8,7 @@ requests>=2.32.0
 orjson>=3.10.0
 PyYAML>=6.0.2
 # Optional
+# faster-whisper
 # essentia
 # demucs
 # torch

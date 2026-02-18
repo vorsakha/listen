@@ -52,6 +52,24 @@ class CacheStore:
             )
             """
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS lyrics_cache (
+                source_key TEXT PRIMARY KEY,
+                lyrics_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS lyrics_analysis_cache (
+                lyrics_key TEXT PRIMARY KEY,
+                analysis_json TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
         self.conn.commit()
 
     @staticmethod
@@ -139,6 +157,52 @@ class CacheStore:
         )
         self.conn.commit()
 
+    def get_lyrics(self, source_key: str) -> str | None:
+        cur = self.conn.cursor()
+        row = cur.execute(
+            "SELECT lyrics_json FROM lyrics_cache WHERE source_key = ?", (source_key,)
+        ).fetchone()
+        if not row:
+            return None
+        return row[0]
+
+    def put_lyrics(self, source_key: str, lyrics_json: str) -> None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO lyrics_cache(source_key, lyrics_json, created_at)
+            VALUES(?, ?, ?)
+            ON CONFLICT(source_key) DO UPDATE SET
+              lyrics_json = excluded.lyrics_json,
+              created_at = excluded.created_at
+            """,
+            (source_key, lyrics_json, int(time.time())),
+        )
+        self.conn.commit()
+
+    def get_lyrics_analysis(self, lyrics_key: str) -> str | None:
+        cur = self.conn.cursor()
+        row = cur.execute(
+            "SELECT analysis_json FROM lyrics_analysis_cache WHERE lyrics_key = ?", (lyrics_key,)
+        ).fetchone()
+        if not row:
+            return None
+        return row[0]
+
+    def put_lyrics_analysis(self, lyrics_key: str, analysis_json: str) -> None:
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO lyrics_analysis_cache(lyrics_key, analysis_json, created_at)
+            VALUES(?, ?, ?)
+            ON CONFLICT(lyrics_key) DO UPDATE SET
+              analysis_json = excluded.analysis_json,
+              created_at = excluded.created_at
+            """,
+            (lyrics_key, analysis_json, int(time.time())),
+        )
+        self.conn.commit()
+
     def cache_status(self, key: str) -> dict[str, Any]:
         query_key = self.normalize_key(key)
         cur = self.conn.cursor()
@@ -149,6 +213,12 @@ class CacheStore:
             "query_cached": bool(q),
             "audio_cached": bool(a),
             "feature_cached": bool(f),
+            "lyrics_cached": bool(
+                cur.execute("SELECT 1 FROM lyrics_cache WHERE source_key = ?", (query_key,)).fetchone()
+            ),
+            "lyrics_analysis_cached": bool(
+                cur.execute("SELECT 1 FROM lyrics_analysis_cache WHERE lyrics_key = ?", (query_key,)).fetchone()
+            ),
             "audio_path": a[0] if a else None,
             "feature_path": f[0] if f else None,
         }
