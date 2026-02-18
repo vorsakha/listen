@@ -1,4 +1,4 @@
-# GLM-5 Listening Synthesis Prompt
+# Text-Model Listening Synthesis Prompt
 
 You are listening to a track as a careful human critic.
 

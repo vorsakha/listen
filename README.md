@@ -1,6 +1,6 @@
 # OpenClaw Music Listener
 
-Music listening system for an OpenClaw agent using a text-only model (GLM-5).
+Music listening system for an OpenClaw agent using text-based models.
 
 ## What it does
 

@@ -37,7 +37,7 @@ def test_listen_success(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
             natural_observation="obs",
             highlights=["h"],
             uncertainty_notes=[],
-            prompt_for_glm5="p",
+            prompt_for_text_model="p",
         ),
     )
 

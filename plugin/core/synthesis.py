@@ -79,5 +79,5 @@ def build_synthesis(source: SourceCandidate, features: FeatureResult) -> Synthes
         natural_observation=natural,
         highlights=highlights,
         uncertainty_notes=uncertainty,
-        prompt_for_glm5=prompt,
+        prompt_for_text_model=prompt,
     )

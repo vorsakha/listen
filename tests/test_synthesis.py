@@ -9,7 +9,7 @@ def test_build_synthesis_contains_prompt_and_highlights() -> None:
     features = FeatureResult(tempo_bpm=88.0, key="F", mode="minor", energy_mean=0.03, section_map=[{"start_sec": 0.0, "end_sec": 10.0, "energy": 0.1}])
 
     out = build_synthesis(source, features)
-    assert "Immediate feel" in out.prompt_for_glm5
+    assert "Immediate feel" in out.prompt_for_text_model
     assert out.highlights
     assert "88.0" in " ".join(out.highlights)
 

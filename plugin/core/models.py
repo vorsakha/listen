@@ -55,7 +55,7 @@ class SynthesisResult(BaseModel):
     natural_observation: str
     highlights: list[str] = Field(default_factory=list)
     uncertainty_notes: list[str] = Field(default_factory=list)
-    prompt_for_glm5: str
+    prompt_for_text_model: str
 
 
 class ListenResult(BaseModel):
