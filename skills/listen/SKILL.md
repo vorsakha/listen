@@ -21,6 +21,13 @@ python3 tools/music_discover.py "<query>"
 python3 tools/music_listen.py "<query>"
 ```
 
+Mode options:
+```bash
+python3 tools/music_listen.py "<query>" --mode auto
+python3 tools/music_listen.py "<query>" --mode full_audio
+python3 tools/music_listen.py "<query>" --mode metadata_only
+```
+
 3. If the user requests low-level artifacts, run layer tools:
 ```bash
 python3 tools/music_fetch.py "<query>"
@@ -32,10 +39,12 @@ python3 tools/music_cache_status.py "<query_or_key>"
 
 - Prefer primary discovery via yt-dlp.
 - Use YouTube Data API only when `YOUTUBE_API_KEY` is configured.
+- Use Spotify metadata discovery when Spotify credentials are configured.
 - Use MusicBrainz as metadata fallback.
 - Report uncertainty explicitly.
 - Never invent lyrics.
 - If lyrics are unavailable, continue with audio-only analysis and say so clearly.
+- If audio retrieval/analysis fails in `auto`, continue with metadata-only synthesis and state that acoustic claims are omitted.
 - For instrumental tracks, focus on rhythm, harmony, texture, and dynamics.
 
 ## Response Requirements

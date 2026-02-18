@@ -5,7 +5,7 @@ from subprocess import CompletedProcess
 
 import pytest
 
-from plugin.core.discovery import discover_song, discover_with_ytdlp
+from plugin.core.discovery import discover_song, discover_with_spotify, discover_with_ytdlp
 from plugin.core.errors import DiscoveryError
 
 
@@ -53,6 +53,7 @@ def test_discover_song_prefers_high_confidence(monkeypatch: pytest.MonkeyPatch) 
         ],
     )
     monkeypatch.setattr("plugin.core.discovery.discover_with_youtube_api", lambda query, max_results=5: [])
+    monkeypatch.setattr("plugin.core.discovery.discover_with_spotify", lambda query, max_results=5, settings=None: [])
     monkeypatch.setattr("plugin.core.discovery.discover_with_musicbrainz", lambda query, max_results=5: [])
 
     out = discover_song("right song")
@@ -64,8 +65,29 @@ def test_discover_song_prefers_high_confidence(monkeypatch: pytest.MonkeyPatch) 
 def test_discover_song_not_found_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("plugin.core.discovery.discover_with_ytdlp", lambda query, max_results=5: [])
     monkeypatch.setattr("plugin.core.discovery.discover_with_youtube_api", lambda query, max_results=5: [])
+    monkeypatch.setattr("plugin.core.discovery.discover_with_spotify", lambda query, max_results=5, settings=None: [])
     monkeypatch.setattr("plugin.core.discovery.discover_with_musicbrainz", lambda query, max_results=5: [])
 
     with pytest.raises(DiscoveryError) as exc:
         discover_song("missing track")
     assert exc.value.code == "DISCOVERY_NOT_FOUND"
+
+
+def test_discover_with_spotify_maps_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "plugin.core.discovery.search_tracks",
+        lambda query, settings, limit=5: [
+            {
+                "id": "sp1",
+                "name": "Good News",
+                "artists": [{"name": "Mac Miller"}],
+                "duration_ms": 332000,
+                "external_urls": {"spotify": "https://open.spotify.com/track/sp1"},
+            }
+        ],
+    )
+
+    out = discover_with_spotify("Mac Miller Good News", settings={"spotify": {"enabled": True}})
+    assert out
+    assert out[0].provider == "spotify"
+    assert out[0].source_type == "metadata"

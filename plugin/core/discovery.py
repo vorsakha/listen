@@ -11,6 +11,8 @@ import requests
 
 from .errors import DiscoveryError
 from .models import DiscoveryResult, SourceCandidate
+from .settings import load_settings
+from .spotify_client import SpotifyClientError, search_tracks
 
 
 def _score(query: str, title: str, artist_guess: str | None, duration_sec: int | None) -> float:
@@ -164,13 +166,55 @@ def discover_with_musicbrainz(query: str, max_results: int = 3) -> list[SourceCa
     return sorted(candidates, key=lambda c: c.confidence, reverse=True)
 
 
-def discover_song(query: str, max_results: int = 5) -> DiscoveryResult:
+def discover_with_spotify(query: str, max_results: int = 5, settings: dict[str, Any] | None = None) -> list[SourceCandidate]:
+    cfg = (settings or {}).get("spotify") or {}
+    if not cfg.get("enabled", True):
+        return []
+
+    try:
+        tracks = search_tracks(query, settings=settings or load_settings(), limit=max_results)
+    except (SpotifyClientError, requests.RequestException):
+        return []
+
+    candidates: list[SourceCandidate] = []
+    for item in tracks:
+        track_id = (item.get("id") or "").strip()
+        if not track_id:
+            continue
+        title = item.get("name") or "Unknown title"
+        artists = item.get("artists") or []
+        artist_names = [a.get("name") for a in artists if isinstance(a, dict) and a.get("name")]
+        artist = ", ".join(artist_names) if artist_names else None
+        duration_ms = item.get("duration_ms")
+        duration_sec = int(duration_ms / 1000) if isinstance(duration_ms, int) else None
+        external_url = ((item.get("external_urls") or {}).get("spotify")) or f"https://open.spotify.com/track/{track_id}"
+        confidence = _score(query, title, artist, duration_sec)
+        candidates.append(
+            SourceCandidate(
+                provider="spotify",
+                source_type="metadata",
+                source_id=track_id,
+                title=title,
+                artist_guess=artist,
+                duration_sec=duration_sec,
+                url=external_url,
+                confidence=confidence,
+                raw=item,
+            )
+        )
+
+    return sorted(candidates, key=lambda c: c.confidence, reverse=True)
+
+
+def discover_song(query: str, max_results: int = 5, settings: dict[str, Any] | None = None) -> DiscoveryResult:
     trace: list[str] = []
     all_candidates: list[SourceCandidate] = []
+    runtime_settings = settings or load_settings()
 
     providers = [
         ("ytdlp", discover_with_ytdlp),
         ("youtube_api", discover_with_youtube_api),
+        ("spotify", lambda q, max_results=5: discover_with_spotify(q, max_results=max_results, settings=runtime_settings)),
         ("musicbrainz", discover_with_musicbrainz),
     ]
 

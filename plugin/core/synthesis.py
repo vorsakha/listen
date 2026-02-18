@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import FeatureResult, LyricsAnalysisResult, SourceCandidate, SynthesisResult
+from .models import FeatureResult, LyricsAnalysisResult, MetadataArtifact, SourceCandidate, SynthesisResult
 
 
 PROMPT_TEMPLATE = """You are listening to a song as a careful human critic.
@@ -92,6 +92,74 @@ def build_synthesis(
         centroid=f"{(features.spectral_centroid_mean or 0.0):.2f}",
         onset_density=f"{(features.onset_density or 0.0):.5f}",
         section_count=len(features.section_map),
+    )
+
+    return SynthesisResult(
+        natural_observation=natural,
+        lyric_observation=lyric_observation,
+        combined_observation=combined_observation,
+        highlights=highlights,
+        uncertainty_notes=uncertainty,
+        prompt_for_text_model=prompt,
+    )
+
+
+def build_metadata_synthesis(
+    source: SourceCandidate,
+    metadata: MetadataArtifact | None,
+    lyrics_analysis: LyricsAnalysisResult | None = None,
+) -> SynthesisResult:
+    artist = ", ".join(metadata.artists) if metadata and metadata.artists else (source.artist_guess or "unknown artist")
+    duration_text = (
+        f"{metadata.duration_sec // 60}:{metadata.duration_sec % 60:02d}"
+        if metadata and metadata.duration_sec
+        else "unknown duration"
+    )
+    release_text = metadata.release_date if metadata and metadata.release_date else "unknown release date"
+    source_label = metadata.source if metadata else "unknown"
+
+    natural = (
+        f"This interpretation is metadata-led for '{source.title}' by {artist}. "
+        f"Catalog cues suggest a track length around {duration_text} with release context {release_text}, "
+        "so the observation focuses on framing and lyrical affect rather than acoustic evidence."
+    )
+    highlights = [
+        f"Metadata source: {source_label}.",
+        f"Track duration: {duration_text}.",
+        "Acoustic feature extraction was not available.",
+    ]
+
+    uncertainty = [
+        "No direct audio analysis; interpretation is metadata/lyrics-based.",
+        "Tempo/key/energy/timbre observations are intentionally omitted.",
+    ]
+
+    lyric_observation = None
+    combined_observation = natural
+    if lyrics_analysis:
+        lyric_observation = (
+            f"Lyrically, the text feels {lyrics_analysis.emotional_polarity}, touching themes like "
+            f"{', '.join(lyrics_analysis.themes[:2])}."
+        )
+        combined_observation = (
+            f"{natural} Lyrical evidence adds a {lyrics_analysis.emotional_polarity} emotional signal "
+            "to this metadata-based reading."
+        )
+    else:
+        uncertainty.append("Lyrics were unavailable or insufficient for textual-feeling analysis.")
+
+    prompt = (
+        "You are analyzing a song with metadata and optional lyric evidence only.\n"
+        "Do not infer acoustic properties (tempo, key, timbre, dynamics).\n"
+        f"Song title: {source.title}\n"
+        f"Artist: {artist}\n"
+        f"Release date: {release_text}\n"
+        f"Duration: {duration_text}\n"
+        f"Source confidence: {source.confidence:.2f}\n"
+        "Respond with:\n"
+        "1) Contextual framing from metadata\n"
+        "2) Lyric emotional reading (if present)\n"
+        "3) Explicit uncertainty due to no audio analysis\n"
     )
 
     return SynthesisResult(

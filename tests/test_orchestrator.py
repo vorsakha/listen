@@ -58,7 +58,9 @@ def test_listen_success(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
 
     out = listen("q", _cache(tmp_path), deep_analysis=True)
     assert not out.errors
+    assert out.analysis_mode == "full_audio"
     assert out.source is not None
+    assert out.metadata is not None
     assert out.audio is not None
     assert out.features is not None
     assert out.lyrics is not None
@@ -87,8 +89,27 @@ def test_listen_retrieval_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> No
         raise RetrievalError("RETRIEVAL_TIMEOUT", "timeout")
 
     monkeypatch.setattr("plugin.core.orchestrator.fetch_audio", boom)
-    out = listen("q", _cache(tmp_path))
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.fetch_lyrics",
+        lambda source, cache, settings, audio: LyricsArtifact(source="none", warnings=["LYRICS_NOT_FOUND"]),
+    )
+    monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.build_metadata_synthesis",
+        lambda source, metadata, lyrics_analysis=None: SynthesisResult(
+            natural_observation="meta-obs",
+            lyric_observation=None,
+            combined_observation="meta-combined",
+            highlights=["meta"],
+            uncertainty_notes=["No direct audio analysis; interpretation is metadata/lyrics-based."],
+            prompt_for_text_model="meta-prompt",
+        ),
+    )
+
+    out = listen("q", _cache(tmp_path), mode="auto")
     assert out.errors[0]["code"] == "RETRIEVAL_TIMEOUT"
+    assert out.analysis_mode == "metadata_only"
+    assert out.synthesis is not None
 
 
 def test_listen_analysis_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -106,5 +127,39 @@ def test_listen_analysis_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Non
         raise AnalysisError("ANALYSIS_AUDIO_LOAD_FAILED", "bad")
 
     monkeypatch.setattr("plugin.core.orchestrator.analyze_audio", boom)
-    out = listen("q", _cache(tmp_path))
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.fetch_lyrics",
+        lambda source, cache, settings, audio: LyricsArtifact(source="none", warnings=["LYRICS_NOT_FOUND"]),
+    )
+    monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.build_metadata_synthesis",
+        lambda source, metadata, lyrics_analysis=None: SynthesisResult(
+            natural_observation="meta-obs",
+            lyric_observation=None,
+            combined_observation="meta-combined",
+            highlights=["meta"],
+            uncertainty_notes=["No direct audio analysis; interpretation is metadata/lyrics-based."],
+            prompt_for_text_model="meta-prompt",
+        ),
+    )
+
+    out = listen("q", _cache(tmp_path), mode="auto")
     assert out.errors[0]["code"] == "ANALYSIS_AUDIO_LOAD_FAILED"
+    assert out.analysis_mode == "metadata_only"
+
+
+def test_listen_full_audio_mode_remains_strict(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    selected = _selected()
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.discover",
+        lambda query, cache: DiscoveryResult(query=query, selected=selected, candidates=[selected], provider_trace=[]),
+    )
+
+    def boom(source, cache):
+        raise RetrievalError("RETRIEVAL_TIMEOUT", "timeout")
+
+    monkeypatch.setattr("plugin.core.orchestrator.fetch_audio", boom)
+    out = listen("q", _cache(tmp_path), mode="full_audio")
+    assert out.errors[0]["code"] == "RETRIEVAL_TIMEOUT"
+    assert out.analysis_mode == "failed"

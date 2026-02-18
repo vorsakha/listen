@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class SourceCandidate(BaseModel):
-    provider: Literal["ytdlp", "youtube_api", "musicbrainz"]
+    provider: Literal["ytdlp", "youtube_api", "spotify", "musicbrainz"]
     source_type: Literal["youtube", "metadata"] = "youtube"
     source_id: str
     title: str
@@ -79,9 +79,24 @@ class SynthesisResult(BaseModel):
     prompt_for_text_model: str
 
 
+class MetadataArtifact(BaseModel):
+    source: Literal["spotify", "musicbrainz", "youtube", "unknown"] = "unknown"
+    track_id: str | None = None
+    title: str | None = None
+    artists: list[str] = Field(default_factory=list)
+    album: str | None = None
+    duration_sec: int | None = None
+    release_date: str | None = None
+    isrc: str | None = None
+    external_url: str | None = None
+    popularity: int | None = None
+
+
 class ListenResult(BaseModel):
     query: str
+    analysis_mode: Literal["full_audio", "metadata_only", "failed"] = "failed"
     source: SourceCandidate | None = None
+    metadata: MetadataArtifact | None = None
     audio: AudioArtifact | None = None
     features: FeatureResult | None = None
     lyrics: LyricsArtifact | None = None

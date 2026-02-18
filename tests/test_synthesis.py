@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from plugin.core.models import FeatureResult, LyricsAnalysisResult, SourceCandidate
-from plugin.core.synthesis import build_synthesis
+from plugin.core.models import FeatureResult, LyricsAnalysisResult, MetadataArtifact, SourceCandidate
+from plugin.core.synthesis import build_metadata_synthesis, build_synthesis
 
 
 def test_build_synthesis_contains_prompt_and_highlights() -> None:
@@ -38,3 +38,12 @@ def test_build_synthesis_with_lyrics_analysis_adds_lyric_observation() -> None:
     out = build_synthesis(source, features, lyrics_analysis=lyrics)
     assert out.lyric_observation is not None
     assert "Lyrically" in out.combined_observation
+
+
+def test_build_metadata_synthesis_omits_acoustic_claims() -> None:
+    source = SourceCandidate(provider="spotify", source_type="metadata", source_id="sp1", title="Song")
+    metadata = MetadataArtifact(source="spotify", title="Song", artists=["Artist"], duration_sec=215)
+
+    out = build_metadata_synthesis(source, metadata)
+    assert any("No direct audio analysis" in note for note in out.uncertainty_notes)
+    assert "tempo" in out.uncertainty_notes[1].lower()
