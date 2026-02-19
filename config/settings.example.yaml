@@ -22,6 +22,14 @@ spotify:
   market: US
   request_timeout_sec: 10
 
+descriptors:
+  enabled: true
+  providers:
+    - acousticbrainz
+    - deezer
+  request_timeout_sec: 10
+  min_confidence: 0.45
+
 retrieval:
   output_format: wav
   audio_quality: "0"

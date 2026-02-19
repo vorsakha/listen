@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from plugin.core.models import FeatureResult, LyricsAnalysisResult, MetadataArtifact, SourceCandidate
-from plugin.core.synthesis import build_metadata_synthesis, build_synthesis
+from plugin.core.models import DescriptorArtifact, FeatureResult, LyricsAnalysisResult, MetadataArtifact, SourceCandidate
+from plugin.core.synthesis import build_descriptor_synthesis, build_metadata_synthesis, build_synthesis
 
 
 def test_build_synthesis_contains_prompt_and_highlights() -> None:
@@ -47,3 +47,21 @@ def test_build_metadata_synthesis_omits_acoustic_claims() -> None:
     out = build_metadata_synthesis(source, metadata)
     assert any("No direct audio analysis" in note for note in out.uncertainty_notes)
     assert "tempo" in out.uncertainty_notes[1].lower()
+
+
+def test_build_descriptor_synthesis_uses_descriptor_fields() -> None:
+    source = SourceCandidate(provider="spotify", source_type="metadata", source_id="sp1", title="Song")
+    descriptor = DescriptorArtifact(
+        tempo_bpm=101.0,
+        key="C",
+        mode="major",
+        energy_proxy=0.5,
+        texture_proxy={"spectral_centroid_mean": 1700.0, "spectral_complexity_mean": 0.4},
+        confidence=0.81,
+        coverage={"tempo_bpm": "direct", "key": "direct"},
+        sources_used=["acousticbrainz.low-level"],
+    )
+
+    out = build_descriptor_synthesis(source, descriptor)
+    assert "Tempo estimate" in " ".join(out.highlights)
+    assert "descriptor" in " ".join(out.uncertainty_notes).lower()

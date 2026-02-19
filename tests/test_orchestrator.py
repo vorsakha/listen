@@ -6,6 +6,7 @@ from plugin.core.cache import CacheStore
 from plugin.core.errors import AnalysisError, DiscoveryError, RetrievalError
 from plugin.core.models import (
     AudioArtifact,
+    DescriptorArtifact,
     DiscoveryResult,
     FeatureResult,
     FetchResult,
@@ -55,6 +56,7 @@ def test_listen_success(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
             prompt_for_text_model="p",
         ),
     )
+    monkeypatch.setattr("plugin.core.orchestrator.build_descriptor_artifact", lambda source, metadata, settings: None)
 
     out = listen("q", _cache(tmp_path), deep_analysis=True)
     assert not out.errors
@@ -95,20 +97,33 @@ def test_listen_retrieval_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> No
     )
     monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
     monkeypatch.setattr(
-        "plugin.core.orchestrator.build_metadata_synthesis",
-        lambda source, metadata, lyrics_analysis=None: SynthesisResult(
-            natural_observation="meta-obs",
+        "plugin.core.orchestrator.build_descriptor_artifact",
+        lambda source, metadata, settings: DescriptorArtifact(
+            tempo_bpm=90.0,
+            key="C",
+            mode="major",
+            energy_proxy=0.5,
+            texture_proxy={"spectral_centroid_mean": 1000.0, "spectral_complexity_mean": 0.3},
+            confidence=0.8,
+            coverage={"tempo_bpm": "direct", "key": "direct", "mode": "direct", "energy_proxy": "direct"},
+            sources_used=["acousticbrainz.low-level"],
+        ),
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.build_descriptor_synthesis",
+        lambda source, descriptor, lyrics_analysis=None: SynthesisResult(
+            natural_observation="desc-obs",
             lyric_observation=None,
-            combined_observation="meta-combined",
-            highlights=["meta"],
-            uncertainty_notes=["No direct audio analysis; interpretation is metadata/lyrics-based."],
-            prompt_for_text_model="meta-prompt",
+            combined_observation="desc-combined",
+            highlights=["desc"],
+            uncertainty_notes=["descriptor"],
+            prompt_for_text_model="desc-prompt",
         ),
     )
 
     out = listen("q", _cache(tmp_path), mode="auto")
     assert out.errors[0]["code"] == "RETRIEVAL_TIMEOUT"
-    assert out.analysis_mode == "metadata_only"
+    assert out.analysis_mode == "descriptor_only"
     assert out.synthesis is not None
 
 
@@ -133,20 +148,33 @@ def test_listen_analysis_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Non
     )
     monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
     monkeypatch.setattr(
-        "plugin.core.orchestrator.build_metadata_synthesis",
-        lambda source, metadata, lyrics_analysis=None: SynthesisResult(
-            natural_observation="meta-obs",
+        "plugin.core.orchestrator.build_descriptor_artifact",
+        lambda source, metadata, settings: DescriptorArtifact(
+            tempo_bpm=90.0,
+            key="C",
+            mode="major",
+            energy_proxy=0.5,
+            texture_proxy={"spectral_centroid_mean": 1000.0, "spectral_complexity_mean": 0.3},
+            confidence=0.8,
+            coverage={"tempo_bpm": "direct", "key": "direct", "mode": "direct", "energy_proxy": "direct"},
+            sources_used=["acousticbrainz.low-level"],
+        ),
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.build_descriptor_synthesis",
+        lambda source, descriptor, lyrics_analysis=None: SynthesisResult(
+            natural_observation="desc-obs",
             lyric_observation=None,
-            combined_observation="meta-combined",
-            highlights=["meta"],
-            uncertainty_notes=["No direct audio analysis; interpretation is metadata/lyrics-based."],
-            prompt_for_text_model="meta-prompt",
+            combined_observation="desc-combined",
+            highlights=["desc"],
+            uncertainty_notes=["descriptor"],
+            prompt_for_text_model="desc-prompt",
         ),
     )
 
     out = listen("q", _cache(tmp_path), mode="auto")
     assert out.errors[0]["code"] == "ANALYSIS_AUDIO_LOAD_FAILED"
-    assert out.analysis_mode == "metadata_only"
+    assert out.analysis_mode == "descriptor_only"
 
 
 def test_listen_full_audio_mode_remains_strict(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -163,3 +191,44 @@ def test_listen_full_audio_mode_remains_strict(monkeypatch: pytest.MonkeyPatch, 
     out = listen("q", _cache(tmp_path), mode="full_audio")
     assert out.errors[0]["code"] == "RETRIEVAL_TIMEOUT"
     assert out.analysis_mode == "failed"
+
+
+def test_listen_descriptor_only_mode(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    selected = _selected()
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.discover",
+        lambda query, cache: DiscoveryResult(query=query, selected=selected, candidates=[selected], provider_trace=[]),
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.fetch_lyrics",
+        lambda source, cache, settings, audio: LyricsArtifact(source="none", warnings=["LYRICS_NOT_FOUND"]),
+    )
+    monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.build_descriptor_artifact",
+        lambda source, metadata, settings: DescriptorArtifact(
+            tempo_bpm=102.0,
+            key="F",
+            mode="minor",
+            energy_proxy=0.62,
+            texture_proxy={"spectral_centroid_mean": 900.0, "spectral_complexity_mean": 0.5},
+            confidence=0.88,
+            coverage={"tempo_bpm": "direct", "key": "direct", "mode": "direct", "energy_proxy": "direct"},
+            sources_used=["acousticbrainz.low-level", "acousticbrainz.high-level"],
+        ),
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.build_descriptor_synthesis",
+        lambda source, descriptor, lyrics_analysis=None: SynthesisResult(
+            natural_observation="desc",
+            lyric_observation=None,
+            combined_observation="desc-c",
+            highlights=["h"],
+            uncertainty_notes=[],
+            prompt_for_text_model="p",
+        ),
+    )
+
+    out = listen("q", _cache(tmp_path), mode="descriptor_only")
+    assert out.analysis_mode == "descriptor_only"
+    assert out.descriptor is not None

@@ -16,7 +16,7 @@ def main() -> None:
     parser.add_argument("--no-deep-analysis", action="store_true", help="Skip synthesis stage")
     parser.add_argument(
         "--mode",
-        choices=["auto", "full_audio", "metadata_only"],
+        choices=["auto", "full_audio", "metadata_only", "descriptor_only"],
         default=None,
         help="Listening mode. Defaults to config listen.default_mode.",
     )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import FeatureResult, LyricsAnalysisResult, MetadataArtifact, SourceCandidate, SynthesisResult
+from .models import DescriptorArtifact, FeatureResult, LyricsAnalysisResult, MetadataArtifact, SourceCandidate, SynthesisResult
 
 
 PROMPT_TEMPLATE = """You are listening to a song as a careful human critic.
@@ -160,6 +160,76 @@ def build_metadata_synthesis(
         "1) Contextual framing from metadata\n"
         "2) Lyric emotional reading (if present)\n"
         "3) Explicit uncertainty due to no audio analysis\n"
+    )
+
+    return SynthesisResult(
+        natural_observation=natural,
+        lyric_observation=lyric_observation,
+        combined_observation=combined_observation,
+        highlights=highlights,
+        uncertainty_notes=uncertainty,
+        prompt_for_text_model=prompt,
+    )
+
+
+def build_descriptor_synthesis(
+    source: SourceCandidate,
+    descriptor: DescriptorArtifact,
+    lyrics_analysis: LyricsAnalysisResult | None = None,
+) -> SynthesisResult:
+    tempo = descriptor.tempo_bpm
+    tonal = f"{descriptor.key or 'unknown'} {descriptor.mode}"
+    energy = descriptor.energy_proxy
+    centroid = descriptor.texture_proxy.get("spectral_centroid_mean")
+    complexity = descriptor.texture_proxy.get("spectral_complexity_mean")
+
+    highlights = [
+        f"Tempo estimate: {tempo:.1f} BPM." if tempo is not None else "Tempo estimate unavailable.",
+        f"Key/mode estimate: {tonal}.",
+        f"Descriptor confidence: {descriptor.confidence:.2f}.",
+    ]
+
+    texture_phrase = "texture descriptors are limited"
+    if centroid is not None or complexity is not None:
+        texture_phrase = "texture leans bright and layered" if (centroid or 0.0) > 1500 else "texture leans warm and focused"
+
+    natural = (
+        f"Descriptor-level analysis suggests a pulse near {tempo:.0f} BPM and tonal center around {tonal}. "
+        f"Energy proxy sits near {(energy or 0.0):.2f}, and {texture_phrase}. "
+        "This read uses catalog-linked descriptor databases rather than direct waveform extraction."
+    )
+
+    uncertainty = ["Derived from external descriptor datasets, not direct local audio analysis."]
+    missing_fields = [k for k, v in descriptor.coverage.items() if v == "missing"]
+    if missing_fields:
+        uncertainty.append(f"Missing descriptor fields: {', '.join(missing_fields[:4])}.")
+
+    lyric_observation = None
+    combined_observation = natural
+    if lyrics_analysis:
+        lyric_observation = (
+            f"Lyrically, the text feels {lyrics_analysis.emotional_polarity}, touching themes like "
+            f"{', '.join(lyrics_analysis.themes[:2])}."
+        )
+        combined_observation = (
+            f"{natural} Lyrical evidence adds a {lyrics_analysis.emotional_polarity} emotional layer "
+            "to the descriptor-based sonic read."
+        )
+    else:
+        uncertainty.append("Lyrics were unavailable or insufficient for textual-feeling analysis.")
+
+    prompt = (
+        "You are analyzing a song from precomputed descriptors and optional lyric evidence.\n"
+        "Separate direct descriptor evidence from interpretation.\n"
+        f"Title: {source.title}\n"
+        f"Tempo: {tempo if tempo is not None else 'unknown'}\n"
+        f"Key/Mode: {tonal}\n"
+        f"Energy proxy: {(energy if energy is not None else 'unknown')}\n"
+        f"Descriptor confidence: {descriptor.confidence:.2f}\n"
+        "Respond with:\n"
+        "1) Rhythm/motion feel\n"
+        "2) Tonal and texture color\n"
+        "3) Confidence and missing data caveats\n"
     )
 
     return SynthesisResult(

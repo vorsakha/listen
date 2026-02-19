@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class SourceCandidate(BaseModel):
-    provider: Literal["ytdlp", "youtube_api", "spotify", "musicbrainz"]
+    provider: Literal["ytdlp", "youtube_api", "spotify", "musicbrainz", "acousticbrainz", "deezer"]
     source_type: Literal["youtube", "metadata"] = "youtube"
     source_id: str
     title: str
@@ -92,11 +92,28 @@ class MetadataArtifact(BaseModel):
     popularity: int | None = None
 
 
+class DescriptorArtifact(BaseModel):
+    tempo_bpm: float | None = None
+    key: str | None = None
+    mode: Literal["major", "minor", "unknown"] = "unknown"
+    loudness_proxy: float | None = None
+    energy_proxy: float | None = None
+    texture_proxy: dict[str, float | None] = Field(default_factory=dict)
+    danceability_proxy: float | None = None
+    acousticness_proxy: float | None = None
+    instrumentalness_proxy: float | None = None
+    confidence: float = 0.0
+    coverage: dict[str, Literal["direct", "mapped", "missing"]] = Field(default_factory=dict)
+    sources_used: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ListenResult(BaseModel):
     query: str
-    analysis_mode: Literal["full_audio", "metadata_only", "failed"] = "failed"
+    analysis_mode: Literal["full_audio", "descriptor_only", "metadata_only", "failed"] = "failed"
     source: SourceCandidate | None = None
     metadata: MetadataArtifact | None = None
+    descriptor: DescriptorArtifact | None = None
     audio: AudioArtifact | None = None
     features: FeatureResult | None = None
     lyrics: LyricsArtifact | None = None

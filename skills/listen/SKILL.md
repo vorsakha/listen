@@ -26,6 +26,7 @@ Mode options:
 python3 tools/music_listen.py "<query>" --mode auto
 python3 tools/music_listen.py "<query>" --mode full_audio
 python3 tools/music_listen.py "<query>" --mode metadata_only
+python3 tools/music_listen.py "<query>" --mode descriptor_only
 ```
 
 3. If the user requests low-level artifacts, run layer tools:
@@ -41,10 +42,11 @@ python3 tools/music_cache_status.py "<query_or_key>"
 - Use YouTube Data API only when `YOUTUBE_API_KEY` is configured.
 - Use Spotify metadata discovery when Spotify credentials are configured.
 - Use MusicBrainz as metadata fallback.
+- Use AcousticBrainz/Deezer descriptor lookup in descriptor-only flows for tempo/key/texture proxies.
 - Report uncertainty explicitly.
 - Never invent lyrics.
 - If lyrics are unavailable, continue with audio-only analysis and say so clearly.
-- If audio retrieval/analysis fails in `auto`, continue with metadata-only synthesis and state that acoustic claims are omitted.
+- If audio retrieval/analysis fails in `auto`, continue with descriptor/metadata synthesis and state uncertainty and missing fields clearly.
 - For instrumental tracks, focus on rhythm, harmony, texture, and dynamics.
 
 ## Response Requirements

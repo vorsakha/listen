@@ -18,3 +18,7 @@ class RetrievalError(MusicListenError):
 
 class AnalysisError(MusicListenError):
     pass
+
+
+class DescriptorError(MusicListenError):
+    pass

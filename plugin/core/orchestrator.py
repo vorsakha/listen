@@ -5,14 +5,15 @@ from typing import Literal
 
 from .analysis import analyze_audio
 from .cache import CacheStore
+from .descriptor import build_descriptor_artifact
 from .discovery import discover_song
 from .errors import AnalysisError, DiscoveryError, RetrievalError
 from .lyric_analysis import analyze_lyrics
 from .lyrics import fetch_lyrics
-from .models import DiscoveryResult, ListenResult, MetadataArtifact, SourceCandidate
+from .models import DescriptorArtifact, DiscoveryResult, ListenResult, MetadataArtifact, SourceCandidate
 from .retrieval import fetch_audio
 from .settings import load_settings
-from .synthesis import build_metadata_synthesis, build_synthesis
+from .synthesis import build_descriptor_synthesis, build_metadata_synthesis, build_synthesis
 
 
 def discover(query: str, cache: CacheStore, ttl_sec: int = 604800) -> DiscoveryResult:
@@ -26,8 +27,8 @@ def discover(query: str, cache: CacheStore, ttl_sec: int = 604800) -> DiscoveryR
     return result
 
 
-def _resolve_mode(mode: str | None, settings: dict) -> Literal["auto", "full_audio", "metadata_only"]:
-    allowed = {"auto", "full_audio", "metadata_only"}
+def _resolve_mode(mode: str | None, settings: dict) -> Literal["auto", "full_audio", "metadata_only", "descriptor_only"]:
+    allowed = {"auto", "full_audio", "metadata_only", "descriptor_only"}
     if mode in allowed:
         return mode  # type: ignore[return-value]
     configured = ((settings.get("listen") or {}).get("default_mode")) or "auto"
@@ -130,8 +131,20 @@ def listen(query: str, cache: CacheStore, deep_analysis: bool = True, mode: str 
         if lyrics.text:
             outcome.lyrics_analysis = analyze_lyrics(lyrics, cache=cache)
 
+    descriptor: DescriptorArtifact | None = None
+    should_build_descriptor = runtime_mode in {"descriptor_only", "metadata_only", "auto"} and not full_audio_ready
+    if should_build_descriptor and outcome.source:
+        descriptor = build_descriptor_artifact(outcome.source, outcome.metadata, settings=settings)
+        outcome.descriptor = descriptor
+        if descriptor and descriptor.confidence > 0.0:
+            outcome.fallback_trace.append("descriptor:resolved")
+        elif runtime_mode == "descriptor_only":
+            outcome.fallback_trace.append("descriptor:unavailable")
+
     if full_audio_ready:
         outcome.analysis_mode = "full_audio"
+    elif descriptor and descriptor.confidence > 0:
+        outcome.analysis_mode = "descriptor_only"
     else:
         outcome.analysis_mode = "metadata_only" if runtime_mode != "full_audio" else "failed"
 
@@ -139,6 +152,12 @@ def listen(query: str, cache: CacheStore, deep_analysis: bool = True, mode: str 
         outcome.synthesis = build_synthesis(
             outcome.source,
             outcome.features,
+            lyrics_analysis=outcome.lyrics_analysis,
+        )
+    elif deep_analysis and outcome.source and outcome.analysis_mode == "descriptor_only" and outcome.descriptor:
+        outcome.synthesis = build_descriptor_synthesis(
+            source=outcome.source,
+            descriptor=outcome.descriptor,
             lyrics_analysis=outcome.lyrics_analysis,
         )
     elif deep_analysis and outcome.source and outcome.analysis_mode == "metadata_only":
