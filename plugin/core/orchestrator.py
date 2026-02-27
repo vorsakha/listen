@@ -89,7 +89,9 @@ def _audio_provider_priority(provider: str) -> int:
         return 0
     if provider == "youtube_api":
         return 1
-    return 2
+    if provider == "jamendo":
+        return 2
+    return 3
 
 
 def _audio_candidates_for_retry(discovery: DiscoveryResult) -> list[SourceCandidate]:

@@ -5,7 +5,7 @@ Music listening system for an OpenClaw agent using text-based models.
 ## What it does
 
 Given a prompt like `Listen to Mac Miller's Good News`, it can:
-1. Discover the track (yt-dlp first, YouTube API + MusicBrainz fallback)
+1. Discover the track (yt-dlp first, YouTube API + Jamendo + MusicBrainz fallback)
 2. Retrieve audio
 3. Extract music features (tempo/key/energy/sections)
 4. Resolve descriptor-only musical data from public databases (AcousticBrainz/Deezer fallback)
@@ -53,6 +53,7 @@ Default config: `config/settings.example.yaml`
 Useful env vars:
 - `MUSIC_SETTINGS_PATH` (override settings path)
 - `YOUTUBE_API_KEY` (optional YouTube Data API enrichment)
+- `JAMENDO_CLIENT_ID` (optional Jamendo discovery/audio fallback)
 - `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` (optional Spotify metadata discovery)
 
 Listening modes:
@@ -72,6 +73,7 @@ Current status: `37 passed`.
 ## Notes
 
 - Primary discovery/retrieval is `yt-dlp` (no API key needed).
+- Jamendo can provide direct audio fallback when YouTube retrieval fails and a matching track exists.
 - Spotify integration is metadata-only and requires app credentials for discovery.
 - Descriptor-only analysis uses MusicBrainz/AcousticBrainz/Deezer lookups with confidence-based partial returns.
 - The synthesis layer produces a prompt and natural observation text from extracted features.

@@ -384,3 +384,58 @@ def test_listen_full_audio_no_retrievable_candidates(monkeypatch: pytest.MonkeyP
     assert out.analysis_mode == "failed"
     assert out.errors
     assert out.errors[0]["code"] == "RETRIEVAL_UNAVAILABLE"
+
+
+def test_listen_auto_retries_to_jamendo_after_youtube_failures(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    selected = SourceCandidate(provider="spotify", source_type="metadata", source_id="sp1", title="Song", confidence=0.99)
+    youtube_candidate = SourceCandidate(
+        provider="youtube_api",
+        source_type="youtube",
+        source_id="yt2",
+        title="Song",
+        url="https://www.youtube.com/watch?v=yt2",
+        confidence=0.95,
+    )
+    jamendo_candidate = SourceCandidate(
+        provider="jamendo",
+        source_type="youtube",
+        source_id="j1",
+        title="Song",
+        url="https://cdn.jamendo.com/audio.mp3",
+        confidence=0.80,
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.discover",
+        lambda query, cache: DiscoveryResult(
+            query=query,
+            selected=selected,
+            candidates=[selected, youtube_candidate, jamendo_candidate],
+            provider_trace=["youtube_api:1", "jamendo:1", "spotify:1"],
+        ),
+    )
+
+    calls: list[str] = []
+
+    def fake_fetch_audio(source, cache):
+        calls.append(source.provider)
+        if source.provider == "youtube_api":
+            raise RetrievalError("RETRIEVAL_YTDLP_FAILED", "bot check")
+        return FetchResult(source=source, audio=AudioArtifact(path="/tmp/j.mp3", format="mp3"), cache_hit=False)
+
+    monkeypatch.setattr("plugin.core.orchestrator.fetch_audio", fake_fetch_audio)
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.analyze_audio",
+        lambda audio_path, cache: FeatureResult(tempo_bpm=100.0, key="C", mode="major", energy_mean=0.1),
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.fetch_lyrics",
+        lambda source, cache, settings, audio: LyricsArtifact(source="none", warnings=["LYRICS_NOT_FOUND"]),
+    )
+    monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
+    monkeypatch.setattr("plugin.core.orchestrator.build_descriptor_artifact", lambda source, metadata, settings: None)
+
+    out = listen("q", _cache(tmp_path), mode="auto")
+    assert calls == ["youtube_api", "jamendo"]
+    assert out.analysis_mode == "full_audio"
+    assert out.source is not None
+    assert out.source.provider == "jamendo"

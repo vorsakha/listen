@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import subprocess
+from urllib.parse import urlparse
 from pathlib import Path
+
+import requests
 
 from .cache import CacheStore
 from .errors import RetrievalError
 from .models import AudioArtifact, FetchResult, SourceCandidate
+
+
+def _ext_from_url(url: str) -> str:
+    parsed = urlparse(url)
+    ext = Path(parsed.path).suffix.lstrip(".").lower()
+    if ext:
+        return ext
+    return "mp3"
 
 
 def fetch_audio(
@@ -26,6 +37,31 @@ def fetch_audio(
 
     if source.source_type != "youtube" or not source.url:
         raise RetrievalError("RETRIEVAL_UNAVAILABLE", "No retrievable URL available for source")
+
+    if source.provider == "jamendo":
+        ext = _ext_from_url(source.url)
+        target = Path(cache.audio_dir) / f"{source_key}.{ext}"
+        try:
+            resp = requests.get(source.url, timeout=timeout_sec, stream=True)
+            resp.raise_for_status()
+        except requests.Timeout as exc:
+            raise RetrievalError("RETRIEVAL_JAMENDO_TIMEOUT", f"Jamendo download timed out after {timeout_sec}s") from exc
+        except requests.RequestException as exc:
+            raise RetrievalError("RETRIEVAL_JAMENDO_HTTP_FAILED", f"Jamendo download failed: {exc}") from exc
+
+        with target.open("wb") as fh:
+            for chunk in resp.iter_content(chunk_size=64 * 1024):
+                if chunk:
+                    fh.write(chunk)
+        if not target.exists() or target.stat().st_size == 0:
+            raise RetrievalError("RETRIEVAL_JAMENDO_EMPTY", "Jamendo returned no audio content")
+
+        cache.put_audio(source_key, str(target), ext)
+        return FetchResult(
+            source=source,
+            audio=AudioArtifact(path=str(target), format=ext),
+            cache_hit=False,
+        )
 
     out_tpl = str(cache.audio_dir / f"{source_key}.%(ext)s")
     cmd = [

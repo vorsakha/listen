@@ -60,3 +60,74 @@ def test_fetch_audio_metadata_only_source_fails(tmp_path: Path) -> None:
     with pytest.raises(RetrievalError) as exc:
         fetch_audio(source, cache)
     assert exc.value.code == "RETRIEVAL_UNAVAILABLE"
+
+
+def test_fetch_audio_jamendo_download_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    cache = CacheStore(root_dir=str(tmp_path / "cache"), sqlite_path=str(tmp_path / "cache" / "index.sqlite"))
+    source = SourceCandidate(
+        provider="jamendo",
+        source_type="youtube",
+        source_id="j1",
+        title="Track",
+        url="https://cdn.jamendo.com/audio.mp3",
+    )
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            return None
+
+        @staticmethod
+        def iter_content(chunk_size: int = 65536):
+            yield b"abc"
+            yield b"def"
+
+    monkeypatch.setattr("plugin.core.retrieval.requests.get", lambda *args, **kwargs: _Resp())
+
+    out = fetch_audio(source, cache)
+    assert out.cache_hit is False
+    assert out.audio.format == "mp3"
+    assert Path(out.audio.path).exists()
+
+
+def test_fetch_audio_jamendo_http_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import requests
+
+    cache = CacheStore(root_dir=str(tmp_path / "cache"), sqlite_path=str(tmp_path / "cache" / "index.sqlite"))
+    source = SourceCandidate(
+        provider="jamendo",
+        source_type="youtube",
+        source_id="j1",
+        title="Track",
+        url="https://cdn.jamendo.com/audio.mp3",
+    )
+
+    monkeypatch.setattr(
+        "plugin.core.retrieval.requests.get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.HTTPError("bad")),
+    )
+
+    with pytest.raises(RetrievalError) as exc:
+        fetch_audio(source, cache)
+    assert exc.value.code == "RETRIEVAL_JAMENDO_HTTP_FAILED"
+
+
+def test_fetch_audio_jamendo_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import requests
+
+    cache = CacheStore(root_dir=str(tmp_path / "cache"), sqlite_path=str(tmp_path / "cache" / "index.sqlite"))
+    source = SourceCandidate(
+        provider="jamendo",
+        source_type="youtube",
+        source_id="j1",
+        title="Track",
+        url="https://cdn.jamendo.com/audio.mp3",
+    )
+
+    monkeypatch.setattr(
+        "plugin.core.retrieval.requests.get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.Timeout("timeout")),
+    )
+
+    with pytest.raises(RetrievalError) as exc:
+        fetch_audio(source, cache)
+    assert exc.value.code == "RETRIEVAL_JAMENDO_TIMEOUT"

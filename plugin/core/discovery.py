@@ -137,6 +137,8 @@ def _trace_reason_from_error(exc: DiscoveryError) -> str:
         "DISCOVERY_YTDLP_MISSING_BINARY": "missing_binary",
         "DISCOVERY_YTDLP_FAILED": "query_failed",
         "DISCOVERY_BAD_JSON": "bad_json",
+        "DISCOVERY_JAMENDO_REQUEST_FAILED": "request_failed",
+        "DISCOVERY_JAMENDO_FAILED": "query_failed",
         "DISCOVERY_SPOTIFY_AUTH_MISSING": "auth_missing",
         "DISCOVERY_SPOTIFY_REQUEST_FAILED": "request_failed",
         "SPOTIFY_AUTH_FAILED": "auth_failed",
@@ -334,6 +336,75 @@ def discover_with_spotify(query: str, max_results: int = 5, settings: dict[str, 
     return sorted(candidates, key=lambda c: c.confidence, reverse=True)
 
 
+def discover_with_jamendo(query: str, max_results: int = 5, settings: dict[str, Any] | None = None) -> list[SourceCandidate]:
+    runtime_settings = settings or load_settings()
+    cfg = runtime_settings.get("jamendo") or {}
+    if not cfg.get("enabled", True):
+        return []
+
+    client_id_env = str(cfg.get("client_id_env", "JAMENDO_CLIENT_ID"))
+    client_id = os.getenv(client_id_env)
+    if not client_id:
+        return []
+
+    timeout_sec = int(cfg.get("request_timeout_sec", 10))
+    limit = int(cfg.get("max_results", max_results))
+    url = "https://api.jamendo.com/v3.0/tracks/"
+    params = {
+        "client_id": client_id,
+        "format": "json",
+        "namesearch": query,
+        "audioformat": "mp31",
+        "limit": min(max(limit, 1), 50),
+        "include": "musicinfo",
+    }
+
+    try:
+        resp = requests.get(url, params=params, timeout=timeout_sec)
+    except requests.RequestException as exc:
+        raise DiscoveryError("DISCOVERY_JAMENDO_REQUEST_FAILED", f"Jamendo request failed: {exc}") from exc
+
+    if resp.status_code != 200:
+        raise DiscoveryError("DISCOVERY_JAMENDO_FAILED", f"Jamendo search failed: {resp.status_code}")
+
+    payload = resp.json()
+    rows = payload.get("results") if isinstance(payload, dict) else []
+    if not isinstance(rows, list):
+        return []
+
+    candidates: list[SourceCandidate] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        track_id = str(item.get("id") or "").strip()
+        if not track_id:
+            continue
+
+        title = str(item.get("name") or "Unknown title")
+        artist = str(item.get("artist_name") or "").strip() or None
+        duration_raw = item.get("duration")
+        duration_sec = int(duration_raw) if isinstance(duration_raw, (int, float)) else None
+        audio_url = item.get("audiodownload") or item.get("audio")
+        audio_url_s = str(audio_url).strip() if audio_url else ""
+        if not audio_url_s:
+            continue
+
+        candidates.append(
+            SourceCandidate(
+                provider="jamendo",
+                source_type="youtube",
+                source_id=track_id,
+                title=title,
+                artist_guess=artist,
+                duration_sec=duration_sec,
+                url=audio_url_s,
+                confidence=_score(query, title, artist, duration_sec),
+                raw=item,
+            )
+        )
+    return sorted(candidates, key=lambda c: c.confidence, reverse=True)
+
+
 def discover_song(query: str, max_results: int = 5, settings: dict[str, Any] | None = None) -> DiscoveryResult:
     trace: list[str] = []
     all_candidates: list[SourceCandidate] = []
@@ -343,6 +414,7 @@ def discover_song(query: str, max_results: int = 5, settings: dict[str, Any] | N
     providers = [
         ("ytdlp", discover_with_ytdlp),
         ("youtube_api", discover_with_youtube_api),
+        ("jamendo", lambda q, max_results=5: discover_with_jamendo(q, max_results=max_results, settings=runtime_settings)),
         ("spotify", lambda q, max_results=5: discover_with_spotify(q, max_results=max_results, settings=runtime_settings)),
         ("musicbrainz", discover_with_musicbrainz),
     ]
@@ -372,6 +444,11 @@ def discover_song(query: str, max_results: int = 5, settings: dict[str, Any] | N
             hints.append("install yt-dlp and ensure it is on PATH")
         if not os.getenv("YOUTUBE_API_KEY"):
             hints.append("set YOUTUBE_API_KEY to enable YouTube API fallback")
+        jamendo_cfg = (runtime_settings.get("jamendo") or {})
+        if jamendo_cfg.get("enabled", True):
+            jamendo_env = str(jamendo_cfg.get("client_id_env", "JAMENDO_CLIENT_ID"))
+            if not os.getenv(jamendo_env):
+                hints.append(f"set {jamendo_env} to enable Jamendo audio fallback")
         spotify_cfg = (runtime_settings.get("spotify") or {})
         if spotify_cfg.get("enabled", True):
             client_id_env = str(spotify_cfg.get("client_id_env", "SPOTIFY_CLIENT_ID"))

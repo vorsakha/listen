@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class SourceCandidate(BaseModel):
-    provider: Literal["ytdlp", "youtube_api", "spotify", "musicbrainz", "acousticbrainz", "deezer"]
+    provider: Literal["ytdlp", "youtube_api", "jamendo", "spotify", "musicbrainz", "acousticbrainz", "deezer"]
     source_type: Literal["youtube", "metadata"] = "youtube"
     source_id: str
     title: str

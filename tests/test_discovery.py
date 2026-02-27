@@ -5,7 +5,7 @@ from subprocess import CompletedProcess
 
 import pytest
 
-from plugin.core.discovery import _score, discover_song, discover_with_spotify, discover_with_ytdlp
+from plugin.core.discovery import _score, discover_song, discover_with_jamendo, discover_with_spotify, discover_with_ytdlp
 from plugin.core.errors import DiscoveryError
 
 
@@ -218,3 +218,58 @@ def test_not_found_error_includes_actionable_provider_hints(monkeypatch: pytest.
     assert "Provider trace" in msg
     assert "install yt-dlp" in msg
     assert "YOUTUBE_API_KEY" in msg
+
+
+def test_discover_with_jamendo_maps_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JAMENDO_CLIENT_ID", "jid")
+
+    class _Resp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "results": [
+                    {
+                        "id": "j1",
+                        "name": "Song",
+                        "artist_name": "Artist",
+                        "duration": 210,
+                        "audio": "https://cdn.jamendo.com/audio.mp3",
+                    }
+                ]
+            }
+
+    monkeypatch.setattr("plugin.core.discovery.requests.get", lambda *args, **kwargs: _Resp())
+    out = discover_with_jamendo("Artist Song", settings={"jamendo": {"enabled": True}})
+    assert out
+    assert out[0].provider == "jamendo"
+    assert out[0].source_type == "youtube"
+    assert out[0].url == "https://cdn.jamendo.com/audio.mp3"
+
+
+def test_discover_song_includes_jamendo_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plugin.core.models import SourceCandidate
+
+    monkeypatch.setenv("JAMENDO_CLIENT_ID", "jid")
+    monkeypatch.setattr("plugin.core.discovery.discover_with_ytdlp", lambda query, max_results=5: [])
+    monkeypatch.setattr("plugin.core.discovery.discover_with_youtube_api", lambda query, max_results=5: [])
+    monkeypatch.setattr(
+        "plugin.core.discovery.discover_with_jamendo",
+        lambda query, max_results=5, settings=None: [
+            SourceCandidate(
+                provider="jamendo",
+                source_type="youtube",
+                source_id="j1",
+                title="Song",
+                artist_guess="Artist",
+                url="https://cdn.jamendo.com/audio.mp3",
+                confidence=0.8,
+            )
+        ],
+    )
+    monkeypatch.setattr("plugin.core.discovery.discover_with_spotify", lambda query, max_results=5, settings=None: [])
+    monkeypatch.setattr("plugin.core.discovery.discover_with_musicbrainz", lambda query, max_results=5: [])
+
+    out = discover_song("Artist Song", settings={"jamendo": {"enabled": True}})
+    assert any(item.startswith("jamendo:1") for item in out.provider_trace)
