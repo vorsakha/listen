@@ -80,6 +80,42 @@ def _metadata_from_source(source: SourceCandidate) -> MetadataArtifact:
     )
 
 
+def _is_retrievable_source(source: SourceCandidate) -> bool:
+    return source.source_type == "youtube" and bool(source.url)
+
+
+def _audio_provider_priority(provider: str) -> int:
+    if provider == "ytdlp":
+        return 0
+    if provider == "youtube_api":
+        return 1
+    return 2
+
+
+def _audio_candidates_for_retry(discovery: DiscoveryResult) -> list[SourceCandidate]:
+    pool = discovery.candidates or ([discovery.selected] if discovery.selected else [])
+    retrievable = [candidate for candidate in pool if _is_retrievable_source(candidate)]
+    retrievable.sort(key=lambda c: (_audio_provider_priority(c.provider), -c.confidence))
+
+    seen: set[tuple[str, str]] = set()
+    unique: list[SourceCandidate] = []
+    for candidate in retrievable:
+        key = (candidate.provider, candidate.source_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def _primary_ytdlp_failure_marker(provider_trace: list[str]) -> str | None:
+    for item in provider_trace:
+        if item.startswith("ytdlp:error:"):
+            reason = item.split(":", 2)[2] or "error"
+            return f"primary:ytdlp_failed({reason})"
+    return None
+
+
 def listen(query: str, cache: CacheStore, deep_analysis: bool = True, mode: str | None = None) -> ListenResult:
     outcome = ListenResult(query=query)
     settings = load_settings()
@@ -91,28 +127,73 @@ def listen(query: str, cache: CacheStore, deep_analysis: bool = True, mode: str 
         outcome.errors.append({"code": exc.code, "message": exc.message})
         return outcome
 
-    outcome.source = d.selected
     outcome.fallback_trace.extend(d.provider_trace)
+    ytdlp_failure = _primary_ytdlp_failure_marker(d.provider_trace)
+    if ytdlp_failure:
+        outcome.fallback_trace.append(ytdlp_failure)
     if not d.selected:
         outcome.errors.append({"code": "DISCOVERY_EMPTY_SELECTION", "message": "No selected candidate"})
         return outcome
 
-    outcome.metadata = _metadata_from_source(d.selected)
-
     should_try_full_audio = runtime_mode in {"auto", "full_audio"}
-    full_audio_ready = False
+    audio_candidates: list[SourceCandidate] = []
+    chosen_source = d.selected
     if should_try_full_audio:
-        try:
-            fetched = fetch_audio(d.selected, cache)
-            outcome.audio = fetched.audio
-            outcome.cache["audio_cache_hit"] = fetched.cache_hit
-        except RetrievalError as exc:
-            outcome.errors.append({"code": exc.code, "message": exc.message})
+        audio_candidates = _audio_candidates_for_retry(d)
+        if audio_candidates:
+            chosen_source = audio_candidates[0]
+            outcome.fallback_trace.append(f"audio_source:selected({chosen_source.provider}:{chosen_source.source_id})")
+        else:
+            chosen_source = d.selected
+
+    outcome.source = chosen_source
+    outcome.metadata = _metadata_from_source(chosen_source)
+
+    full_audio_ready = False
+    audio_retrieved = False
+    if should_try_full_audio:
+        if not audio_candidates:
             if runtime_mode == "full_audio":
+                outcome.errors.append(
+                    {
+                        "code": "RETRIEVAL_UNAVAILABLE",
+                        "message": "No retrievable candidates found for full_audio mode",
+                    }
+                )
                 outcome.analysis_mode = "failed"
                 return outcome
-            outcome.fallback_trace.append("mode:auto->metadata_only(retrieval_failed)")
+            outcome.fallback_trace.append("mode:auto->metadata_only(no_retrievable_source)")
         else:
+            retrieval_error: RetrievalError | None = None
+            for idx, candidate in enumerate(audio_candidates):
+                if idx > 0:
+                    prev = audio_candidates[idx - 1]
+                    outcome.fallback_trace.append(f"audio_source:retry({prev.provider}->{candidate.provider})")
+
+                outcome.source = candidate
+                outcome.metadata = _metadata_from_source(candidate)
+                try:
+                    fetched = fetch_audio(candidate, cache)
+                except RetrievalError as exc:
+                    retrieval_error = exc
+                    outcome.errors.append({"code": exc.code, "message": exc.message})
+                    continue
+
+                outcome.audio = fetched.audio
+                outcome.cache["audio_cache_hit"] = fetched.cache_hit
+                audio_retrieved = True
+                retrieval_error = None
+                break
+
+            if retrieval_error is not None:
+                if runtime_mode == "full_audio":
+                    outcome.analysis_mode = "failed"
+                    return outcome
+                outcome.fallback_trace.append("mode:auto->metadata_only(retrieval_failed_all_candidates)")
+            elif outcome.audio:
+                chosen_source = outcome.source
+
+        if audio_retrieved and outcome.audio:
             try:
                 feature = analyze_audio(outcome.audio.path, cache)
                 outcome.features = feature

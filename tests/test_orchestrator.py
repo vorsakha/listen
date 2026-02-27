@@ -232,3 +232,155 @@ def test_listen_descriptor_only_mode(monkeypatch: pytest.MonkeyPatch, tmp_path) 
     out = listen("q", _cache(tmp_path), mode="descriptor_only")
     assert out.analysis_mode == "descriptor_only"
     assert out.descriptor is not None
+
+
+def test_listen_auto_prefers_ytdlp_for_audio(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    selected = SourceCandidate(provider="spotify", source_type="metadata", source_id="sp1", title="Song", confidence=0.99)
+    ytdlp_candidate = SourceCandidate(
+        provider="ytdlp",
+        source_type="youtube",
+        source_id="yt1",
+        title="Song",
+        url="https://www.youtube.com/watch?v=yt1",
+        confidence=0.85,
+    )
+    youtube_api_candidate = SourceCandidate(
+        provider="youtube_api",
+        source_type="youtube",
+        source_id="yt2",
+        title="Song",
+        url="https://www.youtube.com/watch?v=yt2",
+        confidence=0.95,
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.discover",
+        lambda query, cache: DiscoveryResult(
+            query=query,
+            selected=selected,
+            candidates=[selected, youtube_api_candidate, ytdlp_candidate],
+            provider_trace=["ytdlp:1", "youtube_api:1", "spotify:1"],
+        ),
+    )
+
+    called: list[str] = []
+
+    def fake_fetch_audio(source, cache):
+        called.append(source.provider)
+        return FetchResult(source=source, audio=AudioArtifact(path="/tmp/a.wav", format="wav"), cache_hit=False)
+
+    monkeypatch.setattr("plugin.core.orchestrator.fetch_audio", fake_fetch_audio)
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.analyze_audio",
+        lambda audio_path, cache: FeatureResult(tempo_bpm=100.0, key="C", mode="major", energy_mean=0.1),
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.fetch_lyrics",
+        lambda source, cache, settings, audio: LyricsArtifact(source="none", warnings=["LYRICS_NOT_FOUND"]),
+    )
+    monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
+    monkeypatch.setattr("plugin.core.orchestrator.build_descriptor_artifact", lambda source, metadata, settings: None)
+
+    out = listen("q", _cache(tmp_path), mode="auto")
+    assert called == ["ytdlp"]
+    assert out.analysis_mode == "full_audio"
+    assert out.source is not None
+    assert out.source.provider == "ytdlp"
+
+
+def test_listen_auto_retries_next_retrievable_candidate(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    selected = SourceCandidate(provider="spotify", source_type="metadata", source_id="sp1", title="Song", confidence=0.99)
+    ytdlp_candidate = SourceCandidate(
+        provider="ytdlp",
+        source_type="youtube",
+        source_id="yt1",
+        title="Song",
+        url="https://www.youtube.com/watch?v=yt1",
+        confidence=0.85,
+    )
+    youtube_api_candidate = SourceCandidate(
+        provider="youtube_api",
+        source_type="youtube",
+        source_id="yt2",
+        title="Song",
+        url="https://www.youtube.com/watch?v=yt2",
+        confidence=0.95,
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.discover",
+        lambda query, cache: DiscoveryResult(
+            query=query,
+            selected=selected,
+            candidates=[selected, ytdlp_candidate, youtube_api_candidate],
+            provider_trace=["ytdlp:error:query_failed", "youtube_api:1", "spotify:1"],
+        ),
+    )
+
+    calls: list[str] = []
+
+    def fake_fetch_audio(source, cache):
+        calls.append(source.provider)
+        if source.provider == "ytdlp":
+            raise RetrievalError("RETRIEVAL_YTDLP_FAILED", "bad")
+        return FetchResult(source=source, audio=AudioArtifact(path="/tmp/b.wav", format="wav"), cache_hit=False)
+
+    monkeypatch.setattr("plugin.core.orchestrator.fetch_audio", fake_fetch_audio)
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.analyze_audio",
+        lambda audio_path, cache: FeatureResult(tempo_bpm=100.0, key="C", mode="major", energy_mean=0.1),
+    )
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.fetch_lyrics",
+        lambda source, cache, settings, audio: LyricsArtifact(source="none", warnings=["LYRICS_NOT_FOUND"]),
+    )
+    monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
+    monkeypatch.setattr("plugin.core.orchestrator.build_descriptor_artifact", lambda source, metadata, settings: None)
+
+    out = listen("q", _cache(tmp_path), mode="auto")
+    assert calls == ["ytdlp", "youtube_api"]
+    assert out.analysis_mode == "full_audio"
+    assert out.source is not None
+    assert out.source.provider == "youtube_api"
+    assert any(item.startswith("primary:ytdlp_failed(") for item in out.fallback_trace)
+    assert any(item.startswith("audio_source:retry(") for item in out.fallback_trace)
+
+
+def test_listen_auto_no_retrievable_candidates(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    selected = SourceCandidate(provider="spotify", source_type="metadata", source_id="sp1", title="Song", confidence=0.99)
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.discover",
+        lambda query, cache: DiscoveryResult(
+            query=query,
+            selected=selected,
+            candidates=[selected],
+            provider_trace=["ytdlp:error:missing_binary", "spotify:1", "musicbrainz:1"],
+        ),
+    )
+
+    def fail_if_called(source, cache):
+        raise AssertionError("fetch_audio should not be called when no retrievable candidate exists")
+
+    monkeypatch.setattr("plugin.core.orchestrator.fetch_audio", fail_if_called)
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.fetch_lyrics",
+        lambda source, cache, settings, audio: LyricsArtifact(source="none", warnings=["LYRICS_NOT_FOUND"]),
+    )
+    monkeypatch.setattr("plugin.core.orchestrator.analyze_lyrics", lambda lyrics, cache: None)
+    monkeypatch.setattr("plugin.core.orchestrator.build_descriptor_artifact", lambda source, metadata, settings: None)
+
+    out = listen("q", _cache(tmp_path), mode="auto")
+    assert out.analysis_mode == "metadata_only"
+    assert any(item == "mode:auto->metadata_only(no_retrievable_source)" for item in out.fallback_trace)
+    assert any(item.startswith("primary:ytdlp_failed(") for item in out.fallback_trace)
+
+
+def test_listen_full_audio_no_retrievable_candidates(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    selected = SourceCandidate(provider="spotify", source_type="metadata", source_id="sp1", title="Song", confidence=0.99)
+    monkeypatch.setattr(
+        "plugin.core.orchestrator.discover",
+        lambda query, cache: DiscoveryResult(query=query, selected=selected, candidates=[selected], provider_trace=["spotify:1"]),
+    )
+
+    out = listen("q", _cache(tmp_path), mode="full_audio")
+    assert out.analysis_mode == "failed"
+    assert out.errors
+    assert out.errors[0]["code"] == "RETRIEVAL_UNAVAILABLE"
