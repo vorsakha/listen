@@ -5,7 +5,7 @@ from subprocess import CompletedProcess
 
 import pytest
 
-from plugin.core.discovery import discover_song, discover_with_spotify, discover_with_ytdlp
+from plugin.core.discovery import _score, discover_song, discover_with_spotify, discover_with_ytdlp
 from plugin.core.errors import DiscoveryError
 
 
@@ -74,6 +74,8 @@ def test_discover_song_not_found_raises(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_discover_with_spotify_maps_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPOTIFY_CLIENT_ID", "id")
+    monkeypatch.setenv("SPOTIFY_CLIENT_SECRET", "secret")
     monkeypatch.setattr(
         "plugin.core.discovery.search_tracks",
         lambda query, settings, limit=5: [
@@ -91,3 +93,128 @@ def test_discover_with_spotify_maps_candidates(monkeypatch: pytest.MonkeyPatch) 
     assert out
     assert out[0].provider == "spotify"
     assert out[0].source_type == "metadata"
+
+
+def test_score_is_accent_insensitive() -> None:
+    with_accent = _score(
+        "De Repente Lembrei de Voce Ulisses Rocha",
+        "De Repente Lembrei de Você",
+        "Ulisses Rocha",
+        240,
+    )
+    without_accent = _score(
+        "De Repente Lembrei de Voce Ulisses Rocha",
+        "De Repente Lembrei de Voce",
+        "Ulisses Rocha",
+        240,
+    )
+    assert abs(with_accent - without_accent) < 0.02
+
+
+def test_discover_song_obscure_title_ranks_correct_candidate(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plugin.core.models import SourceCandidate
+
+    monkeypatch.setattr(
+        "plugin.core.discovery.discover_with_ytdlp",
+        lambda query, max_results=5: [
+            SourceCandidate(provider="ytdlp", source_id="x1", title="Ulisses Rocha - Outra Cancao", confidence=0.8),
+        ],
+    )
+    monkeypatch.setattr(
+        "plugin.core.discovery.discover_with_youtube_api",
+        lambda query, max_results=5: [
+            SourceCandidate(
+                provider="youtube_api",
+                source_id="x2",
+                title="De Repente Lembrei de Você",
+                artist_guess="Ulisses Rocha",
+                confidence=0.2,
+            ),
+        ],
+    )
+    monkeypatch.setattr("plugin.core.discovery.discover_with_spotify", lambda query, max_results=5, settings=None: [])
+    monkeypatch.setattr("plugin.core.discovery.discover_with_musicbrainz", lambda query, max_results=5: [])
+
+    out = discover_song("De Repente Lembrei de Voce Ulisses Rocha")
+    assert out.selected is not None
+    assert out.selected.source_id == "x2"
+
+
+def test_discover_song_dedupes_cross_provider_duplicates(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plugin.core.models import SourceCandidate
+
+    monkeypatch.setattr(
+        "plugin.core.discovery.discover_with_ytdlp",
+        lambda query, max_results=5: [
+            SourceCandidate(
+                provider="ytdlp",
+                source_type="youtube",
+                source_id="yt1",
+                title="De Repente Lembrei de Você",
+                artist_guess="Ulisses Rocha",
+                confidence=0.7,
+            )
+        ],
+    )
+    monkeypatch.setattr("plugin.core.discovery.discover_with_youtube_api", lambda query, max_results=5: [])
+    monkeypatch.setattr(
+        "plugin.core.discovery.discover_with_spotify",
+        lambda query, max_results=5, settings=None: [
+            SourceCandidate(
+                provider="spotify",
+                source_type="metadata",
+                source_id="sp1",
+                title="De Repente Lembrei de Voce",
+                artist_guess="Ulisses Rocha",
+                confidence=0.9,
+            )
+        ],
+    )
+    monkeypatch.setattr("plugin.core.discovery.discover_with_musicbrainz", lambda query, max_results=5: [])
+
+    out = discover_song("De Repente Lembrei de Voce Ulisses Rocha")
+    assert len(out.candidates) == 1
+    assert out.selected is not None
+    assert out.selected.source_type == "youtube"
+
+
+def test_trace_reports_missing_provider_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
+    from plugin.core.errors import DiscoveryError
+    from plugin.core.models import SourceCandidate
+
+    def raise_missing(query, max_results=5):
+        raise DiscoveryError("DISCOVERY_YTDLP_MISSING_BINARY", "not found")
+
+    monkeypatch.setattr("plugin.core.discovery.discover_with_ytdlp", raise_missing)
+    monkeypatch.setattr("plugin.core.discovery.discover_with_youtube_api", lambda query, max_results=5: [])
+    monkeypatch.setattr(
+        "plugin.core.discovery.discover_with_spotify",
+        lambda query, max_results=5, settings=None: [
+            SourceCandidate(provider="spotify", source_type="metadata", source_id="sp1", title="Song", confidence=0.7)
+        ],
+    )
+    monkeypatch.setattr("plugin.core.discovery.discover_with_musicbrainz", lambda query, max_results=5: [])
+
+    out = discover_song("song")
+    assert any(item.startswith("ytdlp:error:missing_binary") for item in out.provider_trace)
+
+
+def test_not_found_error_includes_actionable_provider_hints(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPOTIFY_CLIENT_SECRET", raising=False)
+    monkeypatch.setattr(
+        "plugin.core.discovery.discover_with_ytdlp",
+        lambda query, max_results=5: (_ for _ in ()).throw(DiscoveryError("DISCOVERY_YTDLP_MISSING_BINARY", "missing")),
+    )
+    monkeypatch.setattr("plugin.core.discovery.discover_with_youtube_api", lambda query, max_results=5: [])
+    monkeypatch.setattr("plugin.core.discovery.discover_with_spotify", lambda query, max_results=5, settings=None: [])
+    monkeypatch.setattr("plugin.core.discovery.discover_with_musicbrainz", lambda query, max_results=5: [])
+
+    with pytest.raises(DiscoveryError) as exc:
+        discover_song("missing track", settings={"spotify": {"enabled": True}})
+
+    msg = exc.value.message
+    assert "Provider trace" in msg
+    assert "install yt-dlp" in msg
+    assert "YOUTUBE_API_KEY" in msg
